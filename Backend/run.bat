@@ -1,0 +1,3 @@
+@echo off
+echo Starting Chronoverse Server using Uvicorn...
+python -m uvicorn app.main:app --reload --reload-dir ./app
