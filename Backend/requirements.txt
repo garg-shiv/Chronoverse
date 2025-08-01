@@ -1,0 +1,47 @@
+# Core FastAPI framework and web server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Data validation and serialization
+pydantic==2.5.0
+
+# CORS and middleware support
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Async file operations
+aiofiles==23.2.1
+
+# Speech-to-Text (Whisper)
+openai-whisper==20231117
+torch==2.1.0
+torchaudio==2.1.0
+
+# Audio processing libraries
+librosa==0.10.1
+soundfile==0.12.1
+numpy==1.24.3
+
+# RAG System - Vector Database and Embeddings
+chromadb==0.4.18
+sentence-transformers==2.2.2
+
+# Data processing and utilities
+datasets==2.14.6
+pandas==2.0.3
+
+# Text-to-Speech (for future TTS integration)
+TTS==0.22.0
+
+# HTTP requests (for future integrations)
+httpx==0.25.2
+
+# Additional utilities
+python-dotenv==1.0.0
+Pillow==10.0.1
+
+# Development and testing (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.10.1
