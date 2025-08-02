@@ -1,0 +1,22 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+token = os.getenv("HUGGING_FACE_TOKEN")
+print(f"Token loaded: {token[:10] if token else 'None'}...")
+print(f"Token length: {len(token) if token else 0}")
+print(f"Token starts with 'hf_': {token.startswith('hf_') if token else False}")
+
+# Test API access
+import requests
+if token:
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get("https://huggingface.co/api/whoami", headers=headers)
+    print(f"API test status: {response.status_code}")
+    if response.status_code == 200:
+        print(f"✅ Token valid for user: {response.json().get('name', 'Unknown')}")
+    else:
+        print(f"❌ Token invalid: {response.text}")
+else:
+    print("❌ No token found in environment")
