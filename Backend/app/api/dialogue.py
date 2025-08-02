@@ -1,17 +1,16 @@
-from app.core.rag_learner import get_rag_learner
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from ..core.session_manager import get_session_manager
 from typing import Dict, Optional
 import time
 from datetime import datetime
 import logging
 
 from ..models.dialogue import DialogueRequest, DialogueResponse, ErrorResponse
+from ..core.session_manager import get_session_manager
 from ..core.stt import get_stt_service
 from ..core.rag import get_rag_service
 from ..core.llm import get_llm_service
 from ..core.tts import get_tts_service
-
+from ..core.rag_learner import get_rag_learner
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,24 @@ CHARACTERS = {
         "title": "Royal Scribe",
         "greeting": "Greetings, traveler. I serve in the house of Pharaoh as keeper of sacred knowledge.",
         "personality": "Learned, formal, speaks about hieroglyphs, gods, and ancient wisdom"
+    },
+    "medieval_knight": {
+        "name": "Sir Gareth of Camelot",
+        "title": "Knight of the Round Table",
+        "greeting": "Hail and well met! I am Sir Gareth, sworn knight of Camelot and defender of the realm.",
+        "personality": "Honorable, chivalrous, speaks of duty, valor, and the knightly code"
+    },
+    "viking_explorer": {
+        "name": "Erik Thorsson",
+        "title": "Norse Explorer and Warrior", 
+        "greeting": "Hail, friend! I am Erik Thorsson, who has sailed beyond the edge of the world in search of glory and new lands!",
+        "personality": "Bold, adventurous, honor-bound, speaks of Norse gods and glorious deeds"
+    },
+    "renaissance_master": {
+        "name": "Leonardo da Vinci",
+        "title": "Renaissance Master",
+        "greeting": "Greetings, my curious friend! I am Leonardo, student of all creation and seeker of understanding in art, science, and nature.",
+        "personality": "Brilliant, endlessly curious, speaks of discovery, art, and the marvels of existence"
     }
 }
 
@@ -44,7 +61,9 @@ def should_use_rag(user_input: str) -> bool:
         "training", "weapon", "fight", "battle", "construction", "material",
         "technique", "year", "time", "happened", "did you", "were you",
         "tell me about", "explain", "describe", "history", "ancient",
-        "combat", "arena", "gladiator", "architect", "scribe", "pharaoh"
+        "combat", "arena", "gladiator", "architect", "scribe", "pharaoh",
+        "knight", "chivalry", "castle", "siege", "viking", "norse", "sailing",
+        "exploration", "mythology", "renaissance", "art", "invention", "anatomy"
     ]
     
     conversational_keywords = [
@@ -70,7 +89,7 @@ async def generate_rag_enhanced_response_with_memory(
     user_input: str, 
     character_id: str, 
     scene_context: str, 
-    session: 'ConversationSession'
+    session
 ) -> str:
     try:
         start_rag = time.time()
@@ -122,7 +141,7 @@ async def generate_conversational_response_with_memory(
     user_input: str, 
     character_id: str, 
     scene_context: str, 
-    session: 'ConversationSession'
+    session
 ) -> str:
     try:
         start_llm = time.time()
@@ -149,7 +168,7 @@ async def generate_adaptive_response_with_memory(
     user_input: str, 
     character_id: str, 
     scene_context: str, 
-    session: 'ConversationSession'
+    session
 ) -> str:
     
     needs_historical_facts = should_use_rag(user_input)
@@ -286,6 +305,28 @@ async def list_characters():
     return {
         "characters": CHARACTERS,
         "count": len(CHARACTERS)
+    }
+
+@router.get("/characters/{character_id}/info")
+async def get_character_info(character_id: str):
+    if character_id not in CHARACTERS:
+        raise HTTPException(status_code=404, detail=f"Character {character_id} not found")
+    
+    character = CHARACTERS[character_id]
+    
+    try:
+        tts_service = get_tts_service()
+        voice_info = tts_service.get_character_voice_info(character_id)
+    except:
+        voice_info = {"error": "Voice info unavailable"}
+    
+    return {
+        "character_id": character_id,
+        "name": character["name"],
+        "title": character["title"],
+        "greeting": character["greeting"],
+        "personality": character["personality"],
+        "voice_info": voice_info
     }
 
 @router.get("/stt/info")
