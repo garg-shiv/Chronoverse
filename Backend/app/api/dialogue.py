@@ -10,6 +10,8 @@ from ..models.dialogue import DialogueRequest, DialogueResponse, ErrorResponse
 from ..core.stt import get_stt_service
 from ..core.rag import get_rag_service
 from ..core.llm import get_llm_service
+from ..core.tts import get_tts_service
+
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +183,7 @@ async def create_dialogue(
         
         character = CHARACTERS[character_id]
         transcript = ""
+        audio_url = None
         
         if audio_file:
             logger.info(f"🎤 Processing audio file: {audio_file.filename}")
@@ -218,12 +221,44 @@ async def create_dialogue(
             )
             
             session.add_exchange(transcript, response_text)
+            
+            try:
+                start_tts = time.time()
+                tts_service = get_tts_service()
+                speech_result = await tts_service.generate_character_speech(
+                    character_id=character_id,
+                    text=response_text,
+                    session_id=session.session_id
+                )
+                tts_time = time.time() - start_tts
+                
+                if speech_result["success"]:
+                    audio_url = speech_result["audio_url"]
+                    logger.info(f"🎤 Generated speech in {tts_time:.2f}s: {audio_url}")
+                else:
+                    logger.warning(f"⚠️ TTS generation failed: {speech_result.get('error')}")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ TTS service error (non-critical): {e}")
+                
         else:
             response_text = character["greeting"]
+            
+            try:
+                tts_service = get_tts_service()
+                greeting_speech = await tts_service.generate_character_speech(
+                    character_id=character_id,
+                    text=response_text,
+                    session_id=session.session_id
+                )
+                if greeting_speech["success"]:
+                    audio_url = greeting_speech["audio_url"]
+            except Exception as e:
+                logger.warning(f"⚠️ Greeting TTS failed: {e}")
         
         processing_time = int((time.time() - start_time) * 1000)
         
-        logger.info(f"✅ Dialogue with memory: {processing_time}ms, Session: {session.session_id}")
+        logger.info(f"✅ Dialogue with memory and TTS: {processing_time}ms, Session: {session.session_id}")
         
         return DialogueResponse(
             success=True,
@@ -232,7 +267,7 @@ async def create_dialogue(
             character_id=character_id,
             scene_context=scene_context,
             processing_time_ms=processing_time,
-            audio_url=None,
+            audio_url=audio_url,
             session_id=session.session_id
         )
         
@@ -266,5 +301,13 @@ async def get_llm_info():
     try:
         llm_service = get_llm_service()
         return llm_service.get_model_info()
+    except Exception as e:
+        return {"error": str(e), "status": "unavailable"}
+
+@router.get("/tts/info")
+async def get_tts_info():
+    try:
+        tts_service = get_tts_service()
+        return tts_service.get_system_info()
     except Exception as e:
         return {"error": str(e), "status": "unavailable"}
