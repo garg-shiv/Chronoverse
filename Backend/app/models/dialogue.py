@@ -3,33 +3,37 @@ from typing import Optional
 from datetime import datetime
 
 class DialogueRequest(BaseModel):
-    character_id: str = Field(
-        ..., 
-        description="ID of the historical character (e.g., 'roman_gladiator')",
-        example="roman_gladiator"
-    )
-    scene_context: str = Field(
-        default="general", 
-        description="Current scene/location context",
-        example="colosseum_training_grounds"
-    )
-    user_text: Optional[str] = Field(
-        None, 
-        description="Direct text input (we'll add audio later)",
-        example="Tell me about gladiator training"
-    )
+    character_id: str = Field(..., description="ID of the historical character")
+    user_text: Optional[str] = Field(None, description="Text input from user")
+    scene_context: str = Field(default="general", description="Scene context for the conversation")
+    session_id: Optional[str] = Field(None, description="Session ID for conversation continuity")
 
 class DialogueResponse(BaseModel):
-    success: bool = Field(..., description="Whether the request was successful")
-    transcript: str = Field(..., description="What the user said (or typed)")
-    response_text: str = Field(..., description="Character's response")
-    character_id: str = Field(..., description="Which character responded")
-    scene_context: str = Field(..., description="Current scene context")
-    processing_time_ms: int = Field(..., description="How long it took to process")
-    audio_url: Optional[str] = Field(None, description="URL to audio file (coming later)")
-    session_id: Optional[str] = None
-    
+    success: bool
+    transcript: str
+    response_text: str
+    character_id: str
+    scene_context: str
+    processing_time_ms: int
+    audio_url: Optional[str] = None
+    session_id: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+
 class ErrorResponse(BaseModel):
-    success: bool = Field(default=False)
-    error: str = Field(..., description="What went wrong")
+    success: bool = False
+    error: str
+    error_code: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+class CharacterInfo(BaseModel):
+    character_id: str
+    name: str
+    title: str
+    greeting: str
+    personality: str
+
+class SystemStatus(BaseModel):
+    status: str
+    service: str
+    version: str
     timestamp: datetime = Field(default_factory=datetime.now)
