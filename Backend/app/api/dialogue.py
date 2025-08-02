@@ -1,4 +1,6 @@
+from app.core.rag_learner import get_rag_learner
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from ..core.session_manager import get_session_manager
 from typing import Dict, Optional
 import time
 from datetime import datetime
@@ -62,7 +64,12 @@ def should_use_rag(user_input: str) -> bool:
     
     return True
 
-async def generate_rag_enhanced_response(user_input: str, character_id: str, scene_context: str) -> str:
+async def generate_rag_enhanced_response_with_memory(
+    user_input: str, 
+    character_id: str, 
+    scene_context: str, 
+    session: 'ConversationSession'
+) -> str:
     try:
         start_rag = time.time()
         rag_service = get_rag_service()
@@ -75,55 +82,90 @@ async def generate_rag_enhanced_response(user_input: str, character_id: str, sce
         
         start_llm = time.time()
         llm_service = get_llm_service()
+        
+        conversation_history = session.get_recent_context(max_exchanges=3)
+        
         response_data = await llm_service.generate_response(
             character_id=character_id,
             user_query=user_input,
-            historical_facts=historical_facts
+            historical_facts=historical_facts,
+            conversation_history=conversation_history
         )
         llm_time = time.time() - start_llm
         
-        logger.info(f"📚 RAG + LLM response: RAG {rag_time:.2f}s, LLM {llm_time:.2f}s")
+        try:
+            rag_learner = await get_rag_learner()
+            learning_result = await rag_learner.analyze_and_learn_from_interaction(
+                character_id=character_id,
+                user_query=user_input,
+                retrieved_facts=historical_facts,
+                llm_response=response_data["response_text"]
+            )
+            
+            if learning_result.get("learned", False):
+                logger.info(f"🎓 System learned from interaction: {user_input[:30]}...")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Learning system error (non-critical): {e}")
+        
+        logger.info(f"📚 RAG + LLM with memory: RAG {rag_time:.2f}s, LLM {llm_time:.2f}s")
         return response_data["response_text"]
         
     except Exception as e:
-        logger.error(f"❌ RAG-enhanced response failed: {e}")
+        logger.error(f"❌ RAG-enhanced response with memory failed: {e}")
         character = CHARACTERS.get(character_id, {})
         return character.get("greeting", "I apologize, but I'm having trouble responding right now.")
 
-async def generate_conversational_response(user_input: str, character_id: str, scene_context: str) -> str:
+async def generate_conversational_response_with_memory(
+    user_input: str, 
+    character_id: str, 
+    scene_context: str, 
+    session: 'ConversationSession'
+) -> str:
     try:
         start_llm = time.time()
         llm_service = get_llm_service()
-        response_data = await llm_service.generate_simple_response(
+        
+        conversation_history = session.get_recent_context(max_exchanges=2)
+        
+        response_data = await llm_service.generate_simple_response_with_memory(
             character_id=character_id,
-            user_query=user_input
+            user_query=user_input,
+            conversation_history=conversation_history
         )
         llm_time = time.time() - start_llm
         
-        logger.info(f"💬 LLM-only response: {llm_time:.2f}s")
+        logger.info(f"💬 LLM-only with memory: {llm_time:.2f}s")
         return response_data["response_text"]
         
     except Exception as e:
-        logger.error(f"❌ Conversational response failed: {e}")
+        logger.error(f"❌ Conversational response with memory failed: {e}")
         character = CHARACTERS.get(character_id, {})
         return character.get("greeting", "Hello! I'd be happy to share my knowledge with you.")
 
-async def generate_adaptive_response(user_input: str, character_id: str, scene_context: str) -> str:
+async def generate_adaptive_response_with_memory(
+    user_input: str, 
+    character_id: str, 
+    scene_context: str, 
+    session: 'ConversationSession'
+) -> str:
+    
     needs_historical_facts = should_use_rag(user_input)
     
     if needs_historical_facts:
-        logger.info(f"🔍 Using RAG + LLM for: '{user_input[:50]}...'")
-        return await generate_rag_enhanced_response(user_input, character_id, scene_context)
+        logger.info(f"🔍 Using RAG + LLM with memory for: '{user_input[:50]}...'")
+        return await generate_rag_enhanced_response_with_memory(user_input, character_id, scene_context, session)
     else:
-        logger.info(f"💬 Using LLM-only for: '{user_input[:50]}...'")
-        return await generate_conversational_response(user_input, character_id, scene_context)
+        logger.info(f"💬 Using LLM-only with memory for: '{user_input[:50]}...'")
+        return await generate_conversational_response_with_memory(user_input, character_id, scene_context, session)
 
 @router.post("/dialogue", response_model=DialogueResponse)
 async def create_dialogue(
     character_id: str = Form(...),
     scene_context: str = Form(default="general"),
     audio_file: Optional[UploadFile] = File(None),
-    user_text: Optional[str] = Form(None)
+    user_text: Optional[str] = Form(None),
+    session_id: Optional[str] = Form(None)
 ):
     start_time = time.time()
     
@@ -133,6 +175,9 @@ async def create_dialogue(
                 status_code=400, 
                 detail=f"Unknown character: {character_id}. Available: {list(CHARACTERS.keys())}"
             )
+        
+        session_manager = get_session_manager()
+        session = session_manager.get_or_create_session(character_id, session_id)
         
         character = CHARACTERS[character_id]
         transcript = ""
@@ -168,13 +213,17 @@ async def create_dialogue(
             )
         
         if transcript.strip():
-            response_text = await generate_adaptive_response(transcript, character_id, scene_context)
+            response_text = await generate_adaptive_response_with_memory(
+                transcript, character_id, scene_context, session
+            )
+            
+            session.add_exchange(transcript, response_text)
         else:
             response_text = character["greeting"]
         
         processing_time = int((time.time() - start_time) * 1000)
         
-        logger.info(f"✅ Complete dialogue processing finished in {processing_time}ms")
+        logger.info(f"✅ Dialogue with memory: {processing_time}ms, Session: {session.session_id}")
         
         return DialogueResponse(
             success=True,
@@ -183,7 +232,8 @@ async def create_dialogue(
             character_id=character_id,
             scene_context=scene_context,
             processing_time_ms=processing_time,
-            audio_url=None
+            audio_url=None,
+            session_id=session.session_id
         )
         
     except HTTPException:
