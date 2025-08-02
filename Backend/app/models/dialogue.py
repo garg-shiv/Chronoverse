@@ -27,7 +27,8 @@ class DialogueResponse(BaseModel):
     scene_context: str = Field(..., description="Current scene context")
     processing_time_ms: int = Field(..., description="How long it took to process")
     audio_url: Optional[str] = Field(None, description="URL to audio file (coming later)")
-
+    session_id: Optional[str] = None
+    
 class ErrorResponse(BaseModel):
     success: bool = Field(default=False)
     error: str = Field(..., description="What went wrong")

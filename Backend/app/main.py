@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from app.api.learning_stats import router as learning_router
+
 import uvicorn
 import os
 import logging
@@ -57,6 +59,7 @@ if not os.path.exists("generated_audio"):
 app.mount("/audio", StaticFiles(directory="generated_audio"), name="audio")
 
 app.include_router(dialogue_router, prefix="/api/v1", tags=["dialogue"])
+app.include_router(learning_router, prefix="/api/v1", tags=["learning"])
 
 @app.get("/")
 async def root():

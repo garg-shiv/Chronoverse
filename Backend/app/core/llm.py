@@ -97,9 +97,10 @@ class HistoricalCharacterLLM:
                 prompt=prompt,
                 options={
                     'temperature': 0.7,
-                    'max_tokens': 150,
-                    'num_predict': 150,
-                    'top_p': 0.9,
+                    'max_tokens': 100,
+                    'num_predict': 100,
+                    'top_p': 0.8,
+                    'repeat_penalty': 1.1,
                     'stop': ['\n\nUser:', '\n\nHuman:', '\n\nQ:']
                 }
             )
@@ -151,9 +152,9 @@ class HistoricalCharacterLLM:
                 prompt=prompt,
                 options={
                     'temperature': 0.8,
-                    'max_tokens': 100,
-                    'num_predict': 100,
-                    'top_p': 0.9
+                    'max_tokens': 80,
+                    'num_predict': 80,
+                    'top_p': 0.8
                 }
             )
             
@@ -172,6 +173,59 @@ class HistoricalCharacterLLM:
             
         except Exception as e:
             logger.error(f"❌ Simple response generation failed: {e}")
+            
+            persona = self.character_personas[character_id]
+            fallback = f"Greetings! I am {persona['name']}, {persona['role']}. How may I assist you today?"
+            
+            return {
+                "response_text": fallback,
+                "character_id": character_id,
+                "model_used": "fallback_simple",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    async def generate_simple_response_with_memory(
+        self, 
+        character_id: str, 
+        user_query: str,
+        conversation_history: List[Dict] = None
+    ) -> Dict[str, str]:
+        
+        if character_id not in self.character_personas:
+            raise ValueError(f"Unknown character: {character_id}")
+        
+        try:
+            prompt = self._build_simple_prompt_with_memory(character_id, user_query, conversation_history)
+            
+            logger.info(f"💬 Generating simple response with memory for {character_id}")
+            
+            response = self.client.generate(
+                model=self.model_name,
+                prompt=prompt,
+                options={
+                    'temperature': 0.8,
+                    'max_tokens': 80,
+                    'num_predict': 80,
+                    'top_p': 0.8
+                }
+            )
+            
+            response_text = response['response'].strip()
+            response_text = self._clean_response(response_text, character_id)
+            
+            logger.info(f"✅ Generated simple response with memory: {len(response_text)} chars")
+            
+            return {
+                "response_text": response_text,
+                "character_id": character_id,
+                "model_used": self.model_name,
+                "response_type": "conversational_with_memory",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Simple response with memory failed: {e}")
             
             persona = self.character_personas[character_id]
             fallback = f"Greetings! I am {persona['name']}, {persona['role']}. How may I assist you today?"
@@ -245,6 +299,30 @@ Respond as {persona['name']} with a friendly, brief response (1-2 sentences):
 
         return prompt
     
+    def _build_simple_prompt_with_memory(self, character_id: str, user_query: str, conversation_history: List[Dict] = None) -> str:
+        persona = self.character_personas[character_id]
+        
+        history_context = ""
+        if conversation_history:
+            recent_history = conversation_history[-2:]
+            for exchange in recent_history:
+                history_context += f"You: {exchange.get('character', '')}\nUser: {exchange.get('user', '')}\n"
+        
+        prompt = f"""You are {persona['name']}, a {persona['role']}.
+
+Personality: {persona['personality']}
+Speech Style: {persona['speech_style']}
+
+{f"RECENT CONVERSATION:{chr(10)}{history_context}{chr(10)}" if history_context else ""}
+
+USER: "{user_query}"
+
+Respond as {persona['name']} with a friendly, brief response (1-2 sentences). Reference the conversation if relevant:
+
+{persona['name']}:"""
+
+        return prompt
+    
     def _clean_response(self, response_text: str, character_id: str) -> str:
         persona = self.character_personas[character_id]
         
@@ -283,7 +361,7 @@ Respond as {persona['name']} with a friendly, brief response (1-2 sentences):
             "host": "127.0.0.1:12345",
             "characters_available": len(self.character_personas),
             "status": "ready" if self.client else "unavailable",
-            "features": ["rag_enhanced", "conversational", "adaptive_routing"]
+            "features": ["rag_enhanced", "conversational", "adaptive_routing", "memory_support"]
         }
 
 _llm_instance: Optional[HistoricalCharacterLLM] = None
